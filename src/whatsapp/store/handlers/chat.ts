@@ -42,7 +42,7 @@ export default function chatHandler(sessionId: string, event: BaileysEventEmitte
 				sessionId,
 				undefined,
 				"error",
-				`An error occured during chats set: ${e.message}`,
+				`An error occured during chats set: ${(e as Error).message}`,
 			);
 		}
 	};
@@ -71,57 +71,56 @@ export default function chatHandler(sessionId: string, event: BaileysEventEmitte
 				sessionId,
 				undefined,
 				"error",
-				`An error occured during chats upsert: ${e.message}`,
+				`An error occured during chats upsert: ${(e as Error).message}`,
 			);
 		}
 	};
 
 	const update: BaileysEventHandler<"chats.update"> = async (updates) => {
-      for (const update of updates) {
-         try {
-            const data = transformPrisma(update) as MakeTransformedPrisma<Chat>;
-            // Cek apakah chat sudah ada sebelum mencoba mengupdate note: terkadang chat tidak seluruhnya tercatat di database @todo: cek ulang?
-            const existingChat = await model.findUnique({
-               where: { sessionId_id: { id: update.id!, sessionId } },
-            });
-   
-            if (!existingChat) {
-               logger.info({ update }, "Chat not found, skipping update");
-               continue; 
-            }
-   
-            await model.update({
-               select: { pkId: true },
-               data: {
-                  ...data,
-                  unreadCount:
-                     typeof data.unreadCount === "number"
-                        ? data.unreadCount > 0
-                           ? { increment: data.unreadCount }
-                           : { set: data.unreadCount }
-                        : undefined,
-               },
-               where: { sessionId_id: { id: update.id!, sessionId } },
-            });
-            emitEvent("chats.update", sessionId, { chats: data });
-         } catch (e) {
-            if (e instanceof PrismaClientKnownRequestError && e.code === "P2025") {
-               return logger.info({ update }, "Got update for non existent chat");
-            }
-   
-            // Emit event error
-            emitEvent(
-               "chats.update",
-               sessionId,
-               undefined,
-               "error",
-               `An error occurred during chat update: ${e.message}`,
-            );
-            logger.error(e, "An error occurred during chat update");
-         }
-      }
-   };
-   
+		for (const update of updates) {
+			try {
+				const data = transformPrisma(update) as MakeTransformedPrisma<Chat>;
+				// Cek apakah chat sudah ada sebelum mencoba mengupdate note: terkadang chat tidak seluruhnya tercatat di database @todo: cek ulang?
+				const existingChat = await model.findUnique({
+					where: { sessionId_id: { id: update.id!, sessionId } },
+				});
+
+				if (!existingChat) {
+					logger.info({ update }, "Chat not found, skipping update");
+					continue;
+				}
+
+				await model.update({
+					select: { pkId: true },
+					data: {
+						...data,
+						unreadCount:
+							typeof data.unreadCount === "number"
+								? data.unreadCount > 0
+									? { increment: data.unreadCount }
+									: { set: data.unreadCount }
+								: undefined,
+					},
+					where: { sessionId_id: { id: update.id!, sessionId } },
+				});
+				emitEvent("chats.update", sessionId, { chats: data });
+			} catch (e) {
+				if (e instanceof PrismaClientKnownRequestError && e.code === "P2025") {
+					return logger.info({ update }, "Got update for non existent chat");
+				}
+
+				// Emit event error
+				emitEvent(
+					"chats.update",
+					sessionId,
+					undefined,
+					"error",
+					`An error occurred during chat update: ${(e as Error).message}`,
+				);
+				logger.error(e, "An error occurred during chat update");
+			}
+		}
+	};
 
 	const del: BaileysEventHandler<"chats.delete"> = async (ids) => {
 		try {
@@ -136,7 +135,7 @@ export default function chatHandler(sessionId: string, event: BaileysEventEmitte
 				sessionId,
 				undefined,
 				"error",
-				`An error occured during chats delete: ${e.message}`,
+				`An error occured during chats delete: ${(e as Error).message}`,
 			);
 		}
 	};
