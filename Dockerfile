@@ -7,9 +7,10 @@ FROM node:20-slim
 WORKDIR /app
 # Instalamos git antes de instalar dependencias (esencial para deps desde repositorios)
 RUN apt-get update && apt-get install -y git && rm -rf /var/lib/apt/lists/*
+
 # Copiamos package.json / lock y las dependencias
-COPY package*.json ./
-RUN npm install --quiet
+COPY package.json package-lock.json ./
+RUN npm ci --quiet
 
 # Copiamos el esquema de Prisma y generamos el cliente
 COPY prisma ./prisma
