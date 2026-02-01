@@ -35,14 +35,24 @@ export async function sendWebhook(
 	status: "success" | "error" = "success",
 	message?: string,
 ) {
+	const headers: Record<string, string> = {};
+	if (env.API_KEY) {
+		headers.Authorization = `Bearer ${env.API_KEY}`;
+		headers["X-API-Key"] = env.API_KEY;
+	}
+
 	try {
-		await axios.post(env.URL_WEBHOOK, {
-			sessionId,
-			event,
-			data,
-			status,
-			message,
-		});
+		await axios.post(
+			env.URL_WEBHOOK,
+			{
+				sessionId,
+				event,
+				data,
+				status,
+				message,
+			},
+			{ headers },
+		);
 	} catch (e) {
 		console.error("Error sending webhook", e);
 	}
