@@ -1,9 +1,9 @@
 import { Router } from "express";
-import chatRoutes from "./chats";
-import groupRoutes from "./groups";
-import messageRoutes from "./messages";
-import sessionRoutes from "./sessions";
-import contactRoutes from "./contacts";
+import chatRoutes from "./chats.js";
+import groupRoutes from "./groups.js";
+import messageRoutes from "./messages.js";
+import sessionRoutes from "./sessions.js";
+import contactRoutes from "./contacts.js";
 import { apiKeyValidator } from "@/middlewares/api-key-validator";
 
 const router = Router();

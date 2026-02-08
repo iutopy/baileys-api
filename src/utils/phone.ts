@@ -1,17 +1,19 @@
-/**
- * Utility functions for phone number handling and country code extraction
- */
+const PN_USER_SUFFIX = "@s.whatsapp.net";
+const LID_SUFFIX = "@lid";
 
-/**
- * Extract phone number from WhatsApp JID
- * @param jid - WhatsApp JID (e.g., "1234567890@s.whatsapp.net")
- * @returns Phone number string or null if invalid
- */
+export function isPnJid(jid: string): boolean {
+	return typeof jid === "string" && jid.endsWith(PN_USER_SUFFIX);
+}
+
+export function isLidJid(jid: string): boolean {
+	return typeof jid === "string" && jid.endsWith(LID_SUFFIX);
+}
+
 export function extractPhoneFromJid(jid: string): string | null {
-	if (!jid || !jid.includes('@s.whatsapp.net')) {
+	if (!jid || !isPnJid(jid)) {
 		return null;
 	}
-	return jid.split('@')[0];
+	return jid.slice(0, -PN_USER_SUFFIX.length);
 }
 
 /**

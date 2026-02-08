@@ -2,7 +2,7 @@ import type { RequestHandler } from "express";
 import { logger, serializePrisma } from "@/utils";
 import type { Chat, Message } from "@prisma/client";
 import { prisma } from "@/config/database";
-import { presenceHandler } from "./misc";
+import { presenceHandler } from "./misc.js";
 
 export const list: RequestHandler = async (req, res) => {
 	try {

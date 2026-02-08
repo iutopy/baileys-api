@@ -1,8 +1,8 @@
 {
 	"compilerOptions": {
 		"target": "ES6",
-		"module": "CommonJS",
-		"moduleResolution": "Node",
+		"module": "ESNext",
+		"moduleResolution": "Bundler",
 		"declaration": false,
 		"lib": ["ESNext"],
 		"outDir": "dist/",

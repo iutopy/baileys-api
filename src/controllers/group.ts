@@ -1,6 +1,6 @@
 import type { RequestHandler } from "express";
 import { logger } from "@/utils";
-import { makePhotoURLHandler, presenceHandler } from "./misc";
+import { makePhotoURLHandler, presenceHandler } from "./misc.js";
 import { prisma } from "@/config/database";
 import WhatsappService from "@/whatsapp/service";
 
