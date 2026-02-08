@@ -19,6 +19,7 @@ export type EventsType =
 	| "groups.upsert"
 	| "groups.update"
 	| "group-participants.update"
+	| "lid-mapping.update"
 	| "call.upsert";
 
 export class WebhookEvents {
@@ -41,6 +42,7 @@ export class WebhookEvents {
 	groupsUpsert?: boolean;
 	groupsUpdated?: boolean;
 	groupsParticipantsUpdated?: boolean;
+	lidMappingUpdated?: boolean;
 	connectionUpdated?: boolean;
 	callUpsert?: boolean;
 }
@@ -65,6 +67,7 @@ export const WebhookEventsEnum: Record<keyof WebhookEvents, EventsType> = {
 	groupsUpsert: "groups.upsert",
 	groupsUpdated: "groups.update",
 	groupsParticipantsUpdated: "group-participants.update",
+	lidMappingUpdated: "lid-mapping.update",
 	connectionUpdated: "connection.update",
 	callUpsert: "call.upsert",
 };

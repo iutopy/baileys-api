@@ -6,7 +6,7 @@ import makeWASocket, {
 	fetchLatestBaileysVersion,
 } from "baileys";
 import type { ConnectionState, SocketConfig, WASocket, proto } from "baileys";
-import { Store, useSession } from "./store";
+import { Store, useSession } from "./store/index.js";
 import { prisma } from "@/config/database";
 import { logger, delay, emitEvent } from "@/utils";
 import { WAStatus } from "@/types";

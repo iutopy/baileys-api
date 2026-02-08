@@ -1,7 +1,7 @@
 import http from "http";
-import { ExpressServer } from "./express-server";
+import { ExpressServer } from "./express-server.js";
 import env from "@/config/env";
-import { SocketServer } from "./websocket-server";
+import { SocketServer } from "./websocket-server.js";
 import WhatsappService from "@/whatsapp/service";
 import { initializeSocketEmitter } from "@/utils";
 

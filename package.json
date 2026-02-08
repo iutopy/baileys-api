@@ -1,12 +1,13 @@
 {
 	"name": "baileys-api",
 	"version": "2.0.0",
+	"type": "module",
 	"description": "Simple WhatsApp REST API with multiple device support",
 	"main": "dist/main.js",
 	"scripts": {
 		"build": "tsc --project tsconfig.json && tscpaths -p tsconfig.json -s ./src",
-		"start": "node -r tsconfig-paths/register -r ts-node ./dist/main.js",
-		"dev": "nodemon src/main.ts",
+		"start": "tsx ./dist/main.js",
+		"dev": "nodemon --exec tsx src/main.ts",
 		"lint": "eslint . --ext .ts",
 		"format": "prettier . --write",
 		"postinstall": "prisma generate",
@@ -47,7 +48,7 @@
 		"@hapi/boom": "^10.0.1",
 		"@prisma/client": "^4.16.2",
 		"axios": "^1.7.7",
-		"baileys": "^6.7.21",
+		"baileys": "7.0.0-rc.9",
 		"cors": "^2.8.5",
 		"dotenv": "^16.4.5",
 		"express": "^4.19.2",
@@ -80,6 +81,7 @@
 		"ts-node": "^10.9.2",
 		"tsconfig-paths": "^4.2.0",
 		"tscpaths": "^0.0.9",
+		"tsx": "^4.19.0",
 		"typescript": "^5.3.3"
 	},
 	"engines": {
