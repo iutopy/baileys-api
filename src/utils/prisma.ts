@@ -15,6 +15,15 @@ export function transformPrisma<T extends Record<string, any>>(
 			obj[key] = Buffer.from(val);
 		} else if (typeof val === "number" || val instanceof Long) {
 			obj[key] = toNumber(val);
+		} else if (
+			val &&
+			typeof val === "object" &&
+			typeof (val as { low: unknown }).low === "number" &&
+			typeof (val as { high: unknown }).high === "number"
+		) {
+			// Handle Long-like objects from protobuf (e.g., {low: number, high: number, unsigned: boolean})
+			const longLike = val as { low: number; high: number; unsigned?: boolean };
+			obj[key] = new Long(longLike.low, longLike.high, longLike.unsigned).toNumber();
 		} else if (typeof val === "bigint") {
 			obj[key] = Number(val);
 		} else if (removeNullable && (typeof val === "undefined" || val === null)) {
