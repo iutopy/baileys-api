@@ -2,7 +2,6 @@ import type { BaileysEventEmitter } from "baileys";
 import type { BaileysEventHandler } from "@/types";
 import { transformPrisma, logger, emitEvent } from "@/utils";
 import { prisma } from "@/config/database";
-import { PrismaClientKnownRequestError } from "@prisma/client/runtime/library";
 
 export default function contactHandler(sessionId: string, event: BaileysEventEmitter) {
 	const model = prisma.contact;
@@ -28,7 +27,7 @@ export default function contactHandler(sessionId: string, event: BaileysEventEmi
 				}),
 			);
 
-			await Promise.any([
+			await Promise.all([
 				...upsertPromises,
 				//danger: contacts come with several patches of N contacts, deleting those that are not in this patch ends up deleting those received in the previous patch
 				//prisma.contact.deleteMany({ where: { id: { in: deletedOldContactIds }, sessionId } }),
@@ -80,18 +79,16 @@ export default function contactHandler(sessionId: string, event: BaileysEventEmi
 		for (const update of updates) {
 			try {
 				const data = transformPrisma(update);
-				await model.update({
+				await model.upsert({
 					select: { pkId: true },
-					data,
+					create: { ...data, id: update.id!, sessionId },
+					update: data,
 					where: {
 						sessionId_id: { id: update.id!, sessionId },
 					},
 				});
 				emitEvent("contacts.update", sessionId, { contacts: data });
 			} catch (e) {
-				if (e instanceof PrismaClientKnownRequestError && e.code === "P2025") {
-					return logger.info({ update }, "Got update for non existent contact");
-				}
 				logger.error(e, "An error occured during contact update");
 				emitEvent(
 					"contacts.update",

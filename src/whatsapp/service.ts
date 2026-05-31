@@ -34,6 +34,7 @@ class WhatsappService {
 	private static sessions = new Map<string, Session>();
 	private static retries = new Map<string, number>();
 	private static SSEQRGenerations = new Map<string, number>();
+	private static sessionsPendingDestroy = new Set<string>();
 
 	constructor() {
 		this.init();
@@ -73,9 +74,21 @@ class WhatsappService {
 		const { sessionId, res, SSE = false, readIncomingMessages = false, socketConfig } = options;
 		const configID = `${env.SESSION_CONFIG_ID}-${sessionId}`;
 		let connectionState: Partial<ConnectionState> = { connection: "close" };
+		let isDestroyed = false;
+		let store: Store | undefined;
+		let socket: WASocket;
 
 		const destroy = async (logout = true) => {
+			if (isDestroyed) {
+				return;
+			}
+
+			isDestroyed = true;
+			WhatsappService.sessionsPendingDestroy.add(sessionId);
 			try {
+				store?.unlisten();
+				WhatsappService.sessions.delete(sessionId);
+				WhatsappService.updateWaConnection(sessionId, WAStatus.Disconected);
 				await Promise.all([
 					logout && socket.logout(),
 					prisma.chat.deleteMany({ where: { sessionId } }),
@@ -90,10 +103,17 @@ class WhatsappService {
 			} finally {
 				WhatsappService.sessions.delete(sessionId);
 				WhatsappService.updateWaConnection(sessionId, WAStatus.Disconected);
+				WhatsappService.retries.delete(sessionId);
+				WhatsappService.SSEQRGenerations.delete(sessionId);
+				WhatsappService.sessionsPendingDestroy.delete(sessionId);
 			}
 		};
 
 		const handleConnectionClose = () => {
+			if (isDestroyed || WhatsappService.sessionsPendingDestroy.has(sessionId)) {
+				return;
+			}
+
 			const code = (connectionState.lastDisconnect?.error as Boom)?.output?.statusCode;
 			const restartRequired = code === DisconnectReason.restartRequired;
 			const doNotReconnect = !WhatsappService.shouldReconnect(sessionId);
@@ -107,7 +127,7 @@ class WhatsappService {
 						res.status(500).json({ error: "Unable to create session" });
 					res.end();
 				}
-				destroy(doNotReconnect);
+				void destroy(false);
 				return;
 			}
 
@@ -144,7 +164,9 @@ class WhatsappService {
 						res.status(500).json({ error: "Unable to generate QR" });
 					}
 				}
-				destroy();
+				if (!res) {
+					void destroy();
+				}
 			}
 		};
 
@@ -173,7 +195,7 @@ class WhatsappService {
 				(qr && currentGenerations >= env.SSE_MAX_QR_GENERATION)
 			) {
 				res && !res.writableEnded && res.end();
-				destroy();
+				void destroy();
 				return;
 			}
 
@@ -190,7 +212,7 @@ class WhatsappService {
 			: handleNormalConnectionUpdate;
 		const { state, saveCreds } = await useSession(sessionId);
 		const { version } = await fetchLatestBaileysVersion();
-		const socket = makeWASocket({
+		socket = makeWASocket({
 			browser: [env.BOT_NAME || "WhatsApp Bot", "Chrome", "120.0.6099.109"],
 			generateHighQualityLinkPreview: true,
 			...socketConfig,
@@ -209,7 +231,7 @@ class WhatsappService {
 			},
 		});
 
-		const store = new Store(sessionId, socket.ev);
+		store = new Store(sessionId, socket.ev);
 
 		WhatsappService.sessions.set(sessionId, {
 			...socket,
@@ -277,7 +299,7 @@ class WhatsappService {
 	}
 
 	static async deleteSession(sessionId: string) {
-		WhatsappService.sessions.get(sessionId)?.destroy();
+		await WhatsappService.sessions.get(sessionId)?.destroy();
 	}
 
 	static sessionExists(sessionId: string) {
