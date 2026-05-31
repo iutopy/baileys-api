@@ -62,9 +62,8 @@ export async function useSession(sessionId: string): Promise<{
 
 	const del = async (id: string) => {
 		try {
-			await model.delete({
-				select: { pkId: true },
-				where: { sessionId_id: { id: fixId(id), sessionId } },
+			await model.deleteMany({
+				where: { id: fixId(id), sessionId },
 			});
 		} catch (e) {
 			captureException(e, {
