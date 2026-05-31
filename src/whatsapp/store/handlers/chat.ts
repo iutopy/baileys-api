@@ -1,6 +1,6 @@
 import { type BaileysEventEmitter } from "baileys";
 import type { BaileysEventHandler, MakeTransformedPrisma } from "@/types";
-import { transformPrisma, logger, emitEvent } from "@/utils";
+import { captureException, transformPrisma, logger, emitEvent } from "@/utils";
 import { prisma } from "@/config/database";
 import type { Chat } from "@prisma/client";
 
@@ -35,6 +35,7 @@ export default function chatHandler(sessionId: string, event: BaileysEventEmitte
 				emitEvent("chats.set", sessionId, { chats: processedChats });
 			});
 		} catch (e) {
+			captureException(e, { tags: { scope: "store.chats.set" }, extra: { sessionId } });
 			logger.error(e, "An error occured during chats set");
 			emitEvent(
 				"chats.set",
@@ -64,6 +65,7 @@ export default function chatHandler(sessionId: string, event: BaileysEventEmitte
 			);
 			emitEvent("chats.upsert", sessionId, { chats: results });
 		} catch (e) {
+			captureException(e, { tags: { scope: "store.chats.upsert" }, extra: { sessionId } });
 			logger.error(e, "An error occured during chats upsert");
 			emitEvent(
 				"chats.upsert",
@@ -103,6 +105,10 @@ export default function chatHandler(sessionId: string, event: BaileysEventEmitte
 				});
 				emitEvent("chats.update", sessionId, { chats: data });
 			} catch (e) {
+				captureException(e, {
+					tags: { scope: "store.chats.update" },
+					extra: { sessionId, chatId: update.id },
+				});
 				// Emit event error
 				emitEvent(
 					"chats.update",
@@ -123,6 +129,7 @@ export default function chatHandler(sessionId: string, event: BaileysEventEmitte
 			});
 			emitEvent("chats.delete", sessionId, { chats: ids });
 		} catch (e) {
+			captureException(e, { tags: { scope: "store.chats.delete" }, extra: { sessionId } });
 			logger.error(e, "An error occured during chats delete");
 			emitEvent(
 				"chats.delete",

@@ -19,6 +19,8 @@ interface CustomProcessEnv {
 	SESSION_CONFIG_ID?: string;
 	API_KEY?: string;
 	VALIDATE_COUNTRY_CODE?: boolean;
+	SENTRY_DSN?: string;
+	SENTRY_ENVIRONMENT?: string;
 }
 
 const envSchema = z
@@ -37,6 +39,8 @@ const envSchema = z
 		SESSION_CONFIG_ID: z.string().optional().default("session-config"),
 		API_KEY: z.string(),
 		VALIDATE_COUNTRY_CODE: z.boolean().default(false),
+		SENTRY_DSN: z.string().optional(),
+		SENTRY_ENVIRONMENT: z.string().optional(),
 	})
 	.superRefine((data, ctx) => {
 		if (data.ENABLE_WEBHOOK && !data.URL_WEBHOOK) {
@@ -69,6 +73,8 @@ const processEnv: Partial<CustomProcessEnv> = {
 		: undefined,
 	SESSION_CONFIG_ID: process.env.SESSION_CONFIG_ID,
 	API_KEY: process.env.API_KEY,
+	SENTRY_DSN: process.env.SENTRY_DSN,
+	SENTRY_ENVIRONMENT: process.env.SENTRY_ENVIRONMENT,
 };
 
 type EnvInput = z.input<typeof envSchema>;

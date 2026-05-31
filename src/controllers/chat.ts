@@ -1,5 +1,5 @@
 import type { RequestHandler } from "express";
-import { logger, serializePrisma } from "@/utils";
+import { captureException, logger, serializePrisma } from "@/utils";
 import type { Chat, Message } from "@prisma/client";
 import { prisma } from "@/config/database";
 import { presenceHandler } from "./misc.js";
@@ -26,6 +26,7 @@ export const list: RequestHandler = async (req, res) => {
 		});
 	} catch (e) {
 		const message = "An error occured during chat list";
+		captureException(e, { tags: { scope: "chat.list" } });
 		logger.error(e, message);
 		res.status(500).json({ error: message });
 	}
@@ -54,6 +55,7 @@ export const find: RequestHandler = async (req, res) => {
 		});
 	} catch (e) {
 		const message = "An error occured during chat find";
+		captureException(e, { tags: { scope: "chat.find" } });
 		logger.error(e, message);
 		res.status(500).json({ error: message });
 	}

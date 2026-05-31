@@ -1,5 +1,6 @@
 import WhatsappService from "@/whatsapp/service";
 import type { RequestHandler } from "express";
+import { captureException, logger } from "@/utils";
 
 export const list: RequestHandler = (req, res) => {
 	res.status(200).json(WhatsappService.listSessions());
@@ -14,27 +15,48 @@ export const status: RequestHandler = (req, res) => {
 };
 
 export const add: RequestHandler = async (req, res) => {
-	const { sessionId, readIncomingMessages, ...socketConfig } = req.body;
+	try {
+		const { sessionId, readIncomingMessages, ...socketConfig } = req.body;
 
-	if (WhatsappService.sessionExists(sessionId))
-		return res.status(400).json({ error: "Session already exists" });
-	WhatsappService.createSession({ sessionId, res, readIncomingMessages, socketConfig });
+		if (WhatsappService.sessionExists(sessionId))
+			return res.status(400).json({ error: "Session already exists" });
+
+		await WhatsappService.createSession({ sessionId, res, readIncomingMessages, socketConfig });
+	} catch (e) {
+		const message = "An error occurred during session creation";
+		captureException(e, { tags: { scope: "session.add" } });
+		logger.error(e, message);
+		if (!res.headersSent) {
+			res.status(500).json({ error: message });
+		}
+	}
 };
 
 export const addSSE: RequestHandler = async (req, res) => {
-	const { sessionId } = req.params;
-	res.writeHead(200, {
-		"Content-Type": "text/event-stream",
-		"Cache-Control": "no-cache",
-		Connection: "keep-alive",
-	});
+	try {
+		const { sessionId } = req.params;
+		res.writeHead(200, {
+			"Content-Type": "text/event-stream",
+			"Cache-Control": "no-cache",
+			Connection: "keep-alive",
+		});
 
-	if (WhatsappService.sessionExists(sessionId)) {
-		res.write(`data: ${JSON.stringify({ error: "Session already exists" })}\n\n`);
-		res.end();
-		return;
+		if (WhatsappService.sessionExists(sessionId)) {
+			res.write(`data: ${JSON.stringify({ error: "Session already exists" })}\n\n`);
+			res.end();
+			return;
+		}
+
+		await WhatsappService.createSession({ sessionId, res, SSE: true });
+	} catch (e) {
+		const message = "An error occurred during SSE session creation";
+		captureException(e, { tags: { scope: "session.addSSE" } });
+		logger.error(e, message);
+		if (!res.writableEnded) {
+			res.write(`data: ${JSON.stringify({ error: message })}\n\n`);
+			res.end();
+		}
 	}
-	WhatsappService.createSession({ sessionId, res, SSE: true });
 };
 
 export const del: RequestHandler = async (req, res) => {

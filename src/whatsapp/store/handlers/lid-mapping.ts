@@ -1,5 +1,5 @@
 import type { BaileysEventEmitter } from "baileys";
-import { logger, emitEvent } from "@/utils";
+import { captureException, logger, emitEvent } from "@/utils";
 
 const LID_MAPPING_UPDATE = "lid-mapping.update" as const;
 
@@ -10,6 +10,10 @@ export default function lidMappingHandler(sessionId: string, event: BaileysEvent
 		try {
 			emitEvent(LID_MAPPING_UPDATE, sessionId, { mapping });
 		} catch (e) {
+			captureException(e, {
+				tags: { scope: "store.lidMapping.update" },
+				extra: { sessionId },
+			});
 			logger.error(e, "An error occurred during lid-mapping update");
 			emitEvent(
 				LID_MAPPING_UPDATE,

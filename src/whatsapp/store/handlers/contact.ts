@@ -1,6 +1,6 @@
 import type { BaileysEventEmitter } from "baileys";
 import type { BaileysEventHandler } from "@/types";
-import { transformPrisma, logger, emitEvent } from "@/utils";
+import { captureException, transformPrisma, logger, emitEvent } from "@/utils";
 import { prisma } from "@/config/database";
 
 export default function contactHandler(sessionId: string, event: BaileysEventEmitter) {
@@ -35,6 +35,7 @@ export default function contactHandler(sessionId: string, event: BaileysEventEmi
 			logger.info({ newContacts: contacts.length }, "Synced contacts");
 			emitEvent("contacts.set", sessionId, { contacts: processedContacts });
 		} catch (e) {
+			captureException(e, { tags: { scope: "store.contacts.set" }, extra: { sessionId } });
 			logger.error(e, "An error occured during contacts set");
 			emitEvent(
 				"contacts.set",
@@ -64,7 +65,11 @@ export default function contactHandler(sessionId: string, event: BaileysEventEmi
 			});
 			emitEvent("contacts.upsert", sessionId, { contacts: processedContacts });
 		} catch (error) {
-			logger.error("An unexpected error occurred during contacts upsert", error);
+			captureException(error, {
+				tags: { scope: "store.contacts.upsert" },
+				extra: { sessionId },
+			});
+			logger.error(error, "An unexpected error occurred during contacts upsert");
 			emitEvent(
 				"contacts.upsert",
 				sessionId,
@@ -89,6 +94,10 @@ export default function contactHandler(sessionId: string, event: BaileysEventEmi
 				});
 				emitEvent("contacts.update", sessionId, { contacts: data });
 			} catch (e) {
+				captureException(e, {
+					tags: { scope: "store.contacts.update" },
+					extra: { sessionId, contactId: update.id },
+				});
 				logger.error(e, "An error occured during contact update");
 				emitEvent(
 					"contacts.update",

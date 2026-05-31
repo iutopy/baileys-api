@@ -1,7 +1,7 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import type { BaileysEventEmitter, GroupMetadata } from "baileys";
 import type { BaileysEventHandler, MakeTransformedPrisma } from "@/types";
-import { transformPrisma, logger, emitEvent } from "@/utils";
+import { captureException, transformPrisma, logger, emitEvent } from "@/utils";
 import { prisma } from "@/config/database";
 
 export default function groupMetadataHandler(sessionId: string, event: BaileysEventEmitter) {
@@ -26,6 +26,7 @@ export default function groupMetadataHandler(sessionId: string, event: BaileysEv
 			);
 			emitEvent("groups.upsert", sessionId, { groups: results });
 		} catch (e) {
+			captureException(e, { tags: { scope: "store.groups.upsert" }, extra: { sessionId } });
 			logger.error(e, "An error occured during groups upsert");
 			emitEvent(
 				"groups.upsert",
@@ -71,6 +72,10 @@ export default function groupMetadataHandler(sessionId: string, event: BaileysEv
 				}
 				emitEvent("groups.update", sessionId, { groups: data });
 			} catch (e) {
+				captureException(e, {
+					tags: { scope: "store.groups.update" },
+					extra: { sessionId, groupId: update.id },
+				});
 				logger.error(e, "An error occured during group metadata update");
 				emitEvent(
 					"groups.update",
@@ -144,6 +149,10 @@ export default function groupMetadataHandler(sessionId: string, event: BaileysEv
 				participants,
 			});
 		} catch (e) {
+			captureException(e, {
+				tags: { scope: "store.groupParticipants.update" },
+				extra: { sessionId, groupId: id, action },
+			});
 			logger.error(e, "An error occured during group participants update");
 			emitEvent(
 				"group-participants.update",

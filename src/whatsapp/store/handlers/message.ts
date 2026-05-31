@@ -1,7 +1,7 @@
 import type { BaileysEventEmitter, MessageUserReceipt, proto, WAMessageKey } from "baileys";
 import { jidNormalizedUser, toNumber } from "baileys";
 import type { BaileysEventHandler, MakeTransformedPrisma } from "@/types";
-import { transformPrisma, logger, emitEvent, haveSameCountryCode } from "@/utils";
+import { captureException, transformPrisma, logger, emitEvent, haveSameCountryCode } from "@/utils";
 import { prisma } from "@/config/database";
 import type { Message } from "@prisma/client";
 import WhatsappService from "@/whatsapp/service";
@@ -32,6 +32,7 @@ export default function messageHandler(sessionId: string, event: BaileysEventEmi
 			});
 			logger.info({ messages: messages.length }, "Synced messages");
 		} catch (e) {
+			captureException(e, { tags: { scope: "store.messages.set" }, extra: { sessionId } });
 			logger.error(e, "An error occured during messages set");
 			emitEvent(
 				"messages.upsert",
@@ -95,6 +96,10 @@ export default function messageHandler(sessionId: string, event: BaileysEventEmi
 							]);
 						}
 					} catch (e) {
+						captureException(e, {
+							tags: { scope: "store.messages.upsert" },
+							extra: { sessionId, messageId: message.key.id, remoteJid: message.key.remoteJid },
+						});
 						logger.error(e, "An error occured during message upsert");
 						emitEvent(
 							"messages.upsert",
@@ -145,6 +150,10 @@ export default function messageHandler(sessionId: string, event: BaileysEventEmi
 					emitEvent("messages.update", sessionId, { messages: processedMessage });
 				});
 			} catch (e) {
+				captureException(e, {
+					tags: { scope: "store.messages.update" },
+					extra: { sessionId, messageId: key.id, remoteJid: key.remoteJid },
+				});
 				logger.error(e, "An error occured during message update");
 				emitEvent(
 					"messages.update",
@@ -171,6 +180,7 @@ export default function messageHandler(sessionId: string, event: BaileysEventEmi
 			});
 			emitEvent("messages.delete", sessionId, { message: item });
 		} catch (e) {
+			captureException(e, { tags: { scope: "store.messages.delete" }, extra: { sessionId } });
 			logger.error(e, "An error occured during message delete");
 			emitEvent(
 				"messages.delete",
@@ -224,6 +234,10 @@ export default function messageHandler(sessionId: string, event: BaileysEventEmi
 					emitEvent("message-receipt.update", sessionId, { message: { key, receipt } });
 				});
 			} catch (e) {
+				captureException(e, {
+					tags: { scope: "store.messageReceipt.update" },
+					extra: { sessionId, messageId: key.id, remoteJid: key.remoteJid },
+				});
 				logger.error(e, "An error occured during message receipt update");
 				emitEvent(
 					"message-receipt.update",
@@ -271,6 +285,10 @@ export default function messageHandler(sessionId: string, event: BaileysEventEmi
 					emitEvent("messages.reaction", sessionId, { message: { key, reaction } });
 				});
 			} catch (e) {
+				captureException(e, {
+					tags: { scope: "store.messageReaction.update" },
+					extra: { sessionId, messageId: key.id, remoteJid: key.remoteJid },
+				});
 				logger.error(e, "An error occured during message reaction update");
 				emitEvent(
 					"messages.reaction",
