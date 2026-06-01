@@ -10,6 +10,9 @@ import env from "@/config/env";
 const getKeyAuthor = (key: WAMessageKey | undefined | null) =>
 	(key?.fromMe ? "me" : key?.participant || key?.remoteJid) || "";
 
+const getNormalizedRemoteJid = (remoteJid: string | null | undefined) =>
+	remoteJid ? jidNormalizedUser(remoteJid) : undefined;
+
 export default function messageHandler(sessionId: string, event: BaileysEventEmitter) {
 	const model = prisma.message;
 	let listening = false;
@@ -118,34 +121,49 @@ export default function messageHandler(sessionId: string, event: BaileysEventEmi
 		for (const { update, key } of updates) {
 			try {
 				await prisma.$transaction(async (tx) => {
-					const prevData = await tx.message.findFirst({
-						where: { id: key.id!, remoteJid: key.remoteJid!, sessionId },
-					});
+					const remoteJid =
+						getNormalizedRemoteJid(key.remoteJid) ||
+						getNormalizedRemoteJid(update.key?.remoteJid);
+					const prevMessages = remoteJid
+						? await tx.message.findMany({
+							where: { id: key.id!, remoteJid, sessionId },
+							take: 2,
+						})
+						: await tx.message.findMany({ where: { id: key.id!, sessionId }, take: 2 });
+					const prevData = prevMessages[0];
+
+					if (prevMessages.length > 1) {
+						return logger.warn(
+							{ key, remoteJid, sessionId },
+							"Got ambiguous update for existing message",
+						);
+					}
+
 					if (!prevData) {
 						return logger.info({ update }, "Got update for non existent message");
 					}
 
-					const data = { ...prevData, ...update } as proto.IWebMessageInfo;
-					await tx.message.delete({
-						select: { pkId: true },
-						where: {
-							sessionId_remoteJid_id: {
-								id: key.id!,
-								remoteJid: key.remoteJid!,
-								sessionId,
-							},
-						},
-					});
-
+					const messageKey = {
+						...(prevData.key as proto.IMessageKey),
+						...(update.key || {}),
+						id: key.id!,
+						remoteJid: prevData.remoteJid,
+					};
+					const data = { ...prevData, ...update, key: messageKey } as proto.IWebMessageInfo;
 					const processedMessage = {
 						...(transformPrisma(data) as MakeTransformedPrisma<Message>),
-						id: data.key.id!,
-						remoteJid: data.key.remoteJid!,
+						id: messageKey.id!,
+						remoteJid: prevData.remoteJid,
 						sessionId,
 					};
-					await tx.message.create({
+					delete processedMessage.pkId;
+
+					await tx.message.update({
 						select: { pkId: true },
 						data: processedMessage,
+						where: {
+							pkId: prevData.pkId,
+						},
 					});
 					emitEvent("messages.update", sessionId, { messages: processedMessage });
 				});
@@ -196,13 +214,26 @@ export default function messageHandler(sessionId: string, event: BaileysEventEmi
 		for (const { key, receipt } of updates) {
 			try {
 				await prisma.$transaction(async (tx) => {
-					const message = await tx.message.findFirst({
-						select: { userReceipt: true },
-						where: { id: key.id!, remoteJid: key.remoteJid!, sessionId },
+					const remoteJid = getNormalizedRemoteJid(key.remoteJid);
+					const messages = await tx.message.findMany({
+						select: { pkId: true, userReceipt: true },
+						where: remoteJid
+							? { id: key.id!, remoteJid, sessionId }
+							: { id: key.id!, sessionId },
+						take: 2,
 					});
+					const message = messages[0];
+
+					if (messages.length > 1) {
+						return logger.warn(
+							{ key, remoteJid, sessionId },
+							"Got ambiguous receipt update for existing message",
+						);
+					}
+
 					if (!message) {
 						return logger.debug(
-							{ update },
+							{ key, receipt },
 							"Got receipt update for non existent message",
 						);
 					}
@@ -223,13 +254,7 @@ export default function messageHandler(sessionId: string, event: BaileysEventEmi
 					await tx.message.update({
 						select: { pkId: true },
 						data: transformPrisma({ userReceipt: userReceipt }),
-						where: {
-							sessionId_remoteJid_id: {
-								id: key.id!,
-								remoteJid: key.remoteJid!,
-								sessionId,
-							},
-						},
+						where: { pkId: message.pkId },
 					});
 					emitEvent("message-receipt.update", sessionId, { message: { key, receipt } });
 				});
@@ -254,13 +279,26 @@ export default function messageHandler(sessionId: string, event: BaileysEventEmi
 		for (const { key, reaction } of reactions) {
 			try {
 				await prisma.$transaction(async (tx) => {
-					const message = await tx.message.findFirst({
-						select: { reactions: true },
-						where: { id: key.id!, remoteJid: key.remoteJid!, sessionId },
+					const remoteJid = getNormalizedRemoteJid(key.remoteJid);
+					const messages = await tx.message.findMany({
+						select: { pkId: true, reactions: true },
+						where: remoteJid
+							? { id: key.id!, remoteJid, sessionId }
+							: { id: key.id!, sessionId },
+						take: 2,
 					});
+					const message = messages[0];
+
+					if (messages.length > 1) {
+						return logger.warn(
+							{ key, remoteJid, sessionId },
+							"Got ambiguous reaction update for existing message",
+						);
+					}
+
 					if (!message) {
 						return logger.debug(
-							{ update },
+							{ key, reaction },
 							"Got reaction update for non existent message",
 						);
 					}
@@ -274,13 +312,7 @@ export default function messageHandler(sessionId: string, event: BaileysEventEmi
 					await tx.message.update({
 						select: { pkId: true },
 						data: transformPrisma({ reactions: reactions }),
-						where: {
-							sessionId_remoteJid_id: {
-								id: key.id!,
-								remoteJid: key.remoteJid!,
-								sessionId,
-							},
-						},
+						where: { pkId: message.pkId },
 					});
 					emitEvent("messages.reaction", sessionId, { message: { key, reaction } });
 				});
