@@ -47,6 +47,7 @@
 	"dependencies": {
 		"@hapi/boom": "^10.0.1",
 		"@prisma/client": "^4.16.2",
+		"@sentry/node": "^10.55.0",
 		"axios": "^1.7.7",
 		"baileys": "7.0.0-rc12",
 		"cors": "^2.8.5",

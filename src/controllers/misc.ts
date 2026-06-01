@@ -1,7 +1,11 @@
 import type { RequestHandler } from "express";
-import { logger } from "@/utils";
+import { captureException, logger } from "@/utils";
 import WhatsappService, { type Session } from "@/whatsapp/service";
 import { WAPresence } from "@/types";
+
+export const debugSentry: RequestHandler = () => {
+	throw new Error("My first Sentry error!");
+};
 
 export const makePhotoURLHandler =
 	(type: "number" | "group" = "number"): RequestHandler =>
@@ -17,6 +21,7 @@ export const makePhotoURLHandler =
 			res.status(200).json({ url });
 		} catch (e) {
 			const message = "An error occured during photo fetch";
+			captureException(e, { tags: { scope: "misc.photo" } });
 			logger.error(e, message);
 			res.status(500).json({ error: message });
 		}
@@ -47,6 +52,7 @@ export const updatePresence = async (session: Session, presence: WAPresence, jid
 		return { message: "Presence updated" };
 	} catch (e) {
 		const message = "An error occured during presence update";
+		captureException(e, { tags: { scope: "misc.presence" } });
 		logger.error(e, message);
 		return { code: 500, error: message };
 	}

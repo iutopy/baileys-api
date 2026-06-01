@@ -3,7 +3,7 @@ import type { AuthenticationCreds, AuthenticationState, SignalDataTypeMap } from
 import { proto } from "baileys";
 import { BufferJSON, initAuthCreds } from "baileys";
 import { prisma } from "@/config/database";
-import { logger } from "@/utils";
+import { captureException, logger } from "@/utils";
 import { PrismaClientKnownRequestError } from "@prisma/client/runtime/library";
 
 const fixId = (id: string) => id.replace(/\//g, "__").replace(/:/g, "-");
@@ -25,6 +25,10 @@ export async function useSession(sessionId: string): Promise<{
 				where: { sessionId_id: { id, sessionId } },
 			});
 		} catch (e) {
+			captureException(e, {
+				tags: { scope: "store.session.write" },
+				extra: { id, sessionId },
+			});
 			logger.error(e, "An error occured during session write");
 		}
 	};
@@ -46,6 +50,10 @@ export async function useSession(sessionId: string): Promise<{
 			if (e instanceof PrismaClientKnownRequestError && e.code === "P2025") {
 				logger.info({ id }, "Trying to read non existent session data");
 			} else {
+				captureException(e, {
+					tags: { scope: "store.session.read" },
+					extra: { id, sessionId },
+				});
 				logger.error(e, "An error occured during session read");
 			}
 			return null;
@@ -54,11 +62,14 @@ export async function useSession(sessionId: string): Promise<{
 
 	const del = async (id: string) => {
 		try {
-			await model.delete({
-				select: { pkId: true },
-				where: { sessionId_id: { id: fixId(id), sessionId } },
+			await model.deleteMany({
+				where: { id: fixId(id), sessionId },
 			});
 		} catch (e) {
+			captureException(e, {
+				tags: { scope: "store.session.delete" },
+				extra: { id, sessionId },
+			});
 			logger.error(e, "An error occured during session delete");
 		}
 	};

@@ -1,5 +1,5 @@
 import type { RequestHandler } from "express";
-import { logger } from "@/utils";
+import { captureException, logger } from "@/utils";
 import { makePhotoURLHandler, presenceHandler } from "./misc.js";
 import { prisma } from "@/config/database";
 import WhatsappService from "@/whatsapp/service";
@@ -34,6 +34,7 @@ export const list: RequestHandler = async (req, res) => {
 		});
 	} catch (e) {
 		const message = "An error occured during group list";
+		captureException(e, { tags: { scope: "group.list" } });
 		logger.error(e, message);
 		res.status(500).json({ error: message });
 	}
@@ -47,6 +48,7 @@ export const find: RequestHandler = async (req, res) => {
 		res.status(200).json(data);
 	} catch (e) {
 		const message = "An error occured during group metadata fetch";
+		captureException(e, { tags: { scope: "group.find" } });
 		logger.error(e, message);
 		res.status(500).json({ error: message });
 	}
@@ -85,6 +87,7 @@ export const create: RequestHandler = async (req, res) => {
 		});
 	} catch (e) {
 		const message = "An error occured during group creation";
+		captureException(e, { tags: { scope: "group.create" } });
 		logger.error(e, message);
 		res.status(500).json({ error: message });
 	}
@@ -120,6 +123,7 @@ export const updateParticipants: RequestHandler = async (req, res) => {
 		});
 	} catch (e) {
 		const message = "An error occured during group participants update";
+		captureException(e, { tags: { scope: "group.updateParticipants" } });
 		logger.error(e, message);
 		res.status(500).json({ error: message });
 	}
@@ -141,6 +145,7 @@ export const updateSubject: RequestHandler = async (req, res) => {
 		});
 	} catch (e) {
 		const message = "An error occured during group subject update";
+		captureException(e, { tags: { scope: "group.updateSubject" } });
 		logger.error(e, message);
 		res.status(500).json({ error: message });
 	}
@@ -158,6 +163,7 @@ export const updateSetting: RequestHandler = async (req, res) => {
 		});
 	} catch (e) {
 		const message = "An error occured during group setting update";
+		captureException(e, { tags: { scope: "group.updateSetting" } });
 		logger.error(e, message);
 		res.status(500).json({ error: message });
 	}
@@ -175,6 +181,7 @@ export const updateDescription: RequestHandler = async (req, res) => {
 		});
 	} catch (e) {
 		const message = "An error occured during group subject update";
+		captureException(e, { tags: { scope: "group.updateDescription" } });
 		logger.error(e, message);
 		res.status(500).json({ error: message });
 	}
@@ -190,6 +197,7 @@ export const leave: RequestHandler = async (req, res) => {
 		});
 	} catch (e) {
 		const message = "An error occured during group leave";
+		captureException(e, { tags: { scope: "group.leave" } });
 		logger.error(e, message);
 		res.status(500).json({ error: message });
 	}

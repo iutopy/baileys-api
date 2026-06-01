@@ -3,7 +3,7 @@ import { ExpressServer } from "./express-server.js";
 import env from "@/config/env";
 import { SocketServer } from "./websocket-server.js";
 import WhatsappService from "@/whatsapp/service";
-import { initializeSocketEmitter } from "@/utils";
+import { captureException, initializeSocketEmitter, logger } from "@/utils";
 
 export class Server {
 	private httpServer: ExpressServer;
@@ -27,14 +27,29 @@ export class Server {
 		// Initialize socket emitter before creating WhatsApp service
 		if (this.socketServer) {
 			initializeSocketEmitter(this.socketServer);
-			console.log("WebSocket server is running");
+			logger.info("WebSocket server is running");
 		}
 
 		// Initialize WhatsApp connection
-		new WhatsappService();
+		const whatsappService = new WhatsappService();
+		await whatsappService.init();
 
-		this.server.listen(this.httpPort, () => {
-			console.log(`Server is running on port ${this.httpPort}`);
+		await new Promise<void>((resolve, reject) => {
+			const onError = (error: Error) => {
+				captureException(error, {
+					tags: { scope: "server.listen" },
+					extra: { port: this.httpPort },
+				});
+				logger.error(error, "HTTP server failed to start");
+				reject(error);
+			};
+
+			this.server.once("error", onError);
+			this.server.listen(this.httpPort, () => {
+				this.server.off("error", onError);
+				logger.info({ port: this.httpPort }, "Server is running");
+				resolve();
+			});
 		});
 	}
 }

@@ -1,9 +1,8 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import type { BaileysEventEmitter, GroupMetadata } from "baileys";
 import type { BaileysEventHandler, MakeTransformedPrisma } from "@/types";
-import { transformPrisma, logger, emitEvent } from "@/utils";
+import { captureException, transformPrisma, logger, emitEvent } from "@/utils";
 import { prisma } from "@/config/database";
-import { PrismaClientKnownRequestError } from "@prisma/client/runtime/library";
 
 export default function groupMetadataHandler(sessionId: string, event: BaileysEventEmitter) {
 	const model = prisma.groupMetadata;
@@ -12,21 +11,22 @@ export default function groupMetadataHandler(sessionId: string, event: BaileysEv
 	const upsert: BaileysEventHandler<"groups.upsert"> = async (groups) => {
 		try {
 			const results: MakeTransformedPrisma<GroupMetadata>[] = [];
-			await Promise.any(
+			await Promise.all(
 				groups
 					.map((g) => transformPrisma(g))
 					.map((data) => {
-						model.upsert({
+						results.push(data);
+						return model.upsert({
 							select: { pkId: true },
 							create: { ...data, sessionId },
 							update: data,
 							where: { sessionId_id: { id: data.id, sessionId } },
 						});
-						results.push(data);
 					}),
 			);
 			emitEvent("groups.upsert", sessionId, { groups: results });
 		} catch (e) {
+			captureException(e, { tags: { scope: "store.groups.upsert" }, extra: { sessionId } });
 			logger.error(e, "An error occured during groups upsert");
 			emitEvent(
 				"groups.upsert",
@@ -42,15 +42,40 @@ export default function groupMetadataHandler(sessionId: string, event: BaileysEv
 		for (const update of updates) {
 			try {
 				const data = transformPrisma(update);
-				await model.update({
+				const exists = await model.findUnique({
 					select: { pkId: true },
-					data: data,
 					where: { sessionId_id: { id: update.id!, sessionId } },
 				});
+
+				if (exists) {
+					await model.update({
+						select: { pkId: true },
+						data,
+						where: { sessionId_id: { id: update.id!, sessionId } },
+					});
+				} else if (typeof data.subject === "string" && data.subject.length > 0) {
+					const createData = {
+						...data,
+						id: update.id!,
+						participants: [],
+						sessionId,
+						subject: data.subject,
+					};
+
+					await model.create({
+						select: { pkId: true },
+						data: createData,
+					});
+				} else {
+					logger.info({ update }, "Group metadata not found and update is incomplete");
+					continue;
+				}
 				emitEvent("groups.update", sessionId, { groups: data });
 			} catch (e) {
-				if (e instanceof PrismaClientKnownRequestError && e.code === "P2025")
-					return logger.info({ update }, "Got metadata update for non existent group");
+				captureException(e, {
+					tags: { scope: "store.groups.update" },
+					extra: { sessionId, groupId: update.id },
+				});
 				logger.error(e, "An error occured during group metadata update");
 				emitEvent(
 					"groups.update",
@@ -124,6 +149,10 @@ export default function groupMetadataHandler(sessionId: string, event: BaileysEv
 				participants,
 			});
 		} catch (e) {
+			captureException(e, {
+				tags: { scope: "store.groupParticipants.update" },
+				extra: { sessionId, groupId: id, action },
+			});
 			logger.error(e, "An error occured during group participants update");
 			emitEvent(
 				"group-participants.update",

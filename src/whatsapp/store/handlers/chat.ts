@@ -1,8 +1,7 @@
 import { type BaileysEventEmitter } from "baileys";
 import type { BaileysEventHandler, MakeTransformedPrisma } from "@/types";
-import { transformPrisma, logger, emitEvent } from "@/utils";
+import { captureException, transformPrisma, logger, emitEvent } from "@/utils";
 import { prisma } from "@/config/database";
-import { PrismaClientKnownRequestError } from "@prisma/client/runtime/library";
 import type { Chat } from "@prisma/client";
 
 export default function chatHandler(sessionId: string, event: BaileysEventEmitter) {
@@ -36,6 +35,7 @@ export default function chatHandler(sessionId: string, event: BaileysEventEmitte
 				emitEvent("chats.set", sessionId, { chats: processedChats });
 			});
 		} catch (e) {
+			captureException(e, { tags: { scope: "store.chats.set" }, extra: { sessionId } });
 			logger.error(e, "An error occured during chats set");
 			emitEvent(
 				"chats.set",
@@ -50,21 +50,22 @@ export default function chatHandler(sessionId: string, event: BaileysEventEmitte
 	const upsert: BaileysEventHandler<"chats.upsert"> = async (chats) => {
 		try {
 			const results: MakeTransformedPrisma<Chat>[] = [];
-			await Promise.any(
+			await Promise.all(
 				chats
 					.map((c) => transformPrisma(c) as MakeTransformedPrisma<Chat>)
 					.map((data) => {
-						model.upsert({
+						results.push(data);
+						return model.upsert({
 							select: { pkId: true },
 							create: { ...data, sessionId },
 							update: data,
 							where: { sessionId_id: { id: data.id, sessionId } },
 						});
-						results.push(data);
 					}),
 			);
 			emitEvent("chats.upsert", sessionId, { chats: results });
 		} catch (e) {
+			captureException(e, { tags: { scope: "store.chats.upsert" }, extra: { sessionId } });
 			logger.error(e, "An error occured during chats upsert");
 			emitEvent(
 				"chats.upsert",
@@ -80,19 +81,9 @@ export default function chatHandler(sessionId: string, event: BaileysEventEmitte
 		for (const update of updates) {
 			try {
 				const data = transformPrisma(update) as MakeTransformedPrisma<Chat>;
-				// Cek apakah chat sudah ada sebelum mencoba mengupdate note: terkadang chat tidak seluruhnya tercatat di database @todo: cek ulang?
-				const existingChat = await model.findUnique({
-					where: { sessionId_id: { id: update.id!, sessionId } },
-				});
-
-				if (!existingChat) {
-					logger.info({ update }, "Chat not found, skipping update");
-					continue;
-				}
-
-				await model.update({
+				await model.upsert({
 					select: { pkId: true },
-					data: {
+					update: {
 						...data,
 						unreadCount:
 							typeof data.unreadCount === "number"
@@ -101,14 +92,23 @@ export default function chatHandler(sessionId: string, event: BaileysEventEmitte
 									: { set: data.unreadCount }
 								: undefined,
 					},
+					create: {
+						...data,
+						id: update.id!,
+						sessionId,
+						unreadCount:
+							typeof data.unreadCount === "number"
+								? data.unreadCount
+								: undefined,
+					},
 					where: { sessionId_id: { id: update.id!, sessionId } },
 				});
 				emitEvent("chats.update", sessionId, { chats: data });
 			} catch (e) {
-				if (e instanceof PrismaClientKnownRequestError && e.code === "P2025") {
-					return logger.info({ update }, "Got update for non existent chat");
-				}
-
+				captureException(e, {
+					tags: { scope: "store.chats.update" },
+					extra: { sessionId, chatId: update.id },
+				});
 				// Emit event error
 				emitEvent(
 					"chats.update",
@@ -129,6 +129,7 @@ export default function chatHandler(sessionId: string, event: BaileysEventEmitte
 			});
 			emitEvent("chats.delete", sessionId, { chats: ids });
 		} catch (e) {
+			captureException(e, { tags: { scope: "store.chats.delete" }, extra: { sessionId } });
 			logger.error(e, "An error occured during chats delete");
 			emitEvent(
 				"chats.delete",

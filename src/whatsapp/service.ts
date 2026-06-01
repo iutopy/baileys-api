@@ -8,7 +8,7 @@ import makeWASocket, {
 import type { ConnectionState, SocketConfig, WASocket, proto } from "baileys";
 import { Store, useSession } from "./store/index.js";
 import { prisma } from "@/config/database";
-import { logger, delay, emitEvent } from "@/utils";
+import { logger, delay, emitEvent, captureException } from "@/utils";
 import { WAStatus } from "@/types";
 import type { Boom } from "@hapi/boom";
 import type { Response } from "express";
@@ -34,19 +34,27 @@ class WhatsappService {
 	private static sessions = new Map<string, Session>();
 	private static retries = new Map<string, number>();
 	private static SSEQRGenerations = new Map<string, number>();
+	private static sessionsPendingDestroy = new Set<string>();
 
 	constructor() {
-		this.init();
 	}
 
-	private async init() {
+	public async init() {
 		const storedSessions = await prisma.session.findMany({
 			select: { sessionId: true, data: true },
 			where: { id: { startsWith: env.SESSION_CONFIG_ID } },
 		});
 		for (const { sessionId, data } of storedSessions) {
-			const { readIncomingMessages, ...socketConfig } = JSON.parse(data);
-			WhatsappService.createSession({ sessionId, readIncomingMessages, socketConfig });
+			try {
+				const { readIncomingMessages, ...socketConfig } = JSON.parse(data);
+				await WhatsappService.createSession({ sessionId, readIncomingMessages, socketConfig });
+			} catch (e) {
+				captureException(e, {
+					tags: { scope: "session.restore" },
+					extra: { sessionId },
+				});
+				logger.error(e, "An error occurred during session restore");
+			}
 		}
 	}
 
@@ -73,9 +81,21 @@ class WhatsappService {
 		const { sessionId, res, SSE = false, readIncomingMessages = false, socketConfig } = options;
 		const configID = `${env.SESSION_CONFIG_ID}-${sessionId}`;
 		let connectionState: Partial<ConnectionState> = { connection: "close" };
+		let isDestroyed = false;
+		let store: Store | undefined;
+		let socket: WASocket;
 
 		const destroy = async (logout = true) => {
+			if (isDestroyed) {
+				return;
+			}
+
+			isDestroyed = true;
+			WhatsappService.sessionsPendingDestroy.add(sessionId);
 			try {
+				store?.unlisten();
+				WhatsappService.sessions.delete(sessionId);
+				WhatsappService.updateWaConnection(sessionId, WAStatus.Disconected);
 				await Promise.all([
 					logout && socket.logout(),
 					prisma.chat.deleteMany({ where: { sessionId } }),
@@ -86,28 +106,47 @@ class WhatsappService {
 				]);
 				logger.info({ session: sessionId }, "Session destroyed");
 			} catch (e) {
+				captureException(e, {
+					tags: { scope: "session.destroy" },
+					extra: { sessionId },
+				});
 				logger.error(e, "An error occurred during session destroy");
 			} finally {
 				WhatsappService.sessions.delete(sessionId);
 				WhatsappService.updateWaConnection(sessionId, WAStatus.Disconected);
+				WhatsappService.retries.delete(sessionId);
+				WhatsappService.SSEQRGenerations.delete(sessionId);
+				WhatsappService.sessionsPendingDestroy.delete(sessionId);
 			}
 		};
 
 		const handleConnectionClose = () => {
+			if (isDestroyed || WhatsappService.sessionsPendingDestroy.has(sessionId)) {
+				return;
+			}
+
 			const code = (connectionState.lastDisconnect?.error as Boom)?.output?.statusCode;
 			const restartRequired = code === DisconnectReason.restartRequired;
+			const replaced = code === DisconnectReason.connectionReplaced;
 			const doNotReconnect = !WhatsappService.shouldReconnect(sessionId);
 
 			WhatsappService.updateWaConnection(sessionId, WAStatus.Disconected);
 
-			if (code === DisconnectReason.loggedOut || doNotReconnect) {
+			if (replaced) {
+				logger.warn(
+					{ sessionId },
+					"Session replaced by another client, not reconnecting",
+				);
+			}
+
+			if (code === DisconnectReason.loggedOut || replaced || doNotReconnect) {
 				if (res) {
 					!SSE &&
 						!res.headersSent &&
 						res.status(500).json({ error: "Unable to create session" });
 					res.end();
 				}
-				destroy(doNotReconnect);
+				void destroy(false);
 				return;
 			}
 
@@ -133,6 +172,10 @@ class WhatsappService {
 						res.status(200).json({ qr });
 						return;
 					} catch (e) {
+						captureException(e, {
+							tags: { scope: "qr.generate" },
+							extra: { sessionId, sse: false },
+						});
 						logger.error(e, "An error occurred during QR generation");
 						emitEvent(
 							"qrcode.updated",
@@ -144,7 +187,9 @@ class WhatsappService {
 						res.status(500).json({ error: "Unable to generate QR" });
 					}
 				}
-				destroy();
+				if (!res) {
+					void destroy();
+				}
 			}
 		};
 
@@ -155,6 +200,10 @@ class WhatsappService {
 					WhatsappService.updateWaConnection(sessionId, WAStatus.WaitQrcodeAuth);
 					qr = await toDataURL(connectionState.qr);
 				} catch (e) {
+					captureException(e, {
+						tags: { scope: "qr.generate" },
+						extra: { sessionId, sse: true },
+					});
 					logger.error(e, "An error occurred during QR generation");
 					emitEvent(
 						"qrcode.updated",
@@ -173,7 +222,7 @@ class WhatsappService {
 				(qr && currentGenerations >= env.SSE_MAX_QR_GENERATION)
 			) {
 				res && !res.writableEnded && res.end();
-				destroy();
+				void destroy();
 				return;
 			}
 
@@ -190,7 +239,7 @@ class WhatsappService {
 			: handleNormalConnectionUpdate;
 		const { state, saveCreds } = await useSession(sessionId);
 		const { version } = await fetchLatestBaileysVersion();
-		const socket = makeWASocket({
+		socket = makeWASocket({
 			browser: [env.BOT_NAME || "WhatsApp Bot", "Chrome", "120.0.6099.109"],
 			generateHighQualityLinkPreview: true,
 			...socketConfig,
@@ -209,7 +258,7 @@ class WhatsappService {
 			},
 		});
 
-		const store = new Store(sessionId, socket.ev);
+		store = new Store(sessionId, socket.ev);
 
 		WhatsappService.sessions.set(sessionId, {
 			...socket,
@@ -277,7 +326,7 @@ class WhatsappService {
 	}
 
 	static async deleteSession(sessionId: string) {
-		WhatsappService.sessions.get(sessionId)?.destroy();
+		await WhatsappService.sessions.get(sessionId)?.destroy();
 	}
 
 	static sessionExists(sessionId: string) {
@@ -302,6 +351,11 @@ class WhatsappService {
 				return null;
 			}
 		} catch (e) {
+			captureException(e, {
+				tags: { scope: "session.validJid" },
+				extra: { jid, type },
+			});
+			logger.error(e, "An error occurred during JID validation");
 			return null;
 		}
 	}

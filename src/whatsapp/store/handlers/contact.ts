@@ -1,8 +1,7 @@
 import type { BaileysEventEmitter } from "baileys";
 import type { BaileysEventHandler } from "@/types";
-import { transformPrisma, logger, emitEvent } from "@/utils";
+import { captureException, transformPrisma, logger, emitEvent } from "@/utils";
 import { prisma } from "@/config/database";
-import { PrismaClientKnownRequestError } from "@prisma/client/runtime/library";
 
 export default function contactHandler(sessionId: string, event: BaileysEventEmitter) {
 	const model = prisma.contact;
@@ -28,7 +27,7 @@ export default function contactHandler(sessionId: string, event: BaileysEventEmi
 				}),
 			);
 
-			await Promise.any([
+			await Promise.all([
 				...upsertPromises,
 				//danger: contacts come with several patches of N contacts, deleting those that are not in this patch ends up deleting those received in the previous patch
 				//prisma.contact.deleteMany({ where: { id: { in: deletedOldContactIds }, sessionId } }),
@@ -36,6 +35,7 @@ export default function contactHandler(sessionId: string, event: BaileysEventEmi
 			logger.info({ newContacts: contacts.length }, "Synced contacts");
 			emitEvent("contacts.set", sessionId, { contacts: processedContacts });
 		} catch (e) {
+			captureException(e, { tags: { scope: "store.contacts.set" }, extra: { sessionId } });
 			logger.error(e, "An error occured during contacts set");
 			emitEvent(
 				"contacts.set",
@@ -65,7 +65,11 @@ export default function contactHandler(sessionId: string, event: BaileysEventEmi
 			});
 			emitEvent("contacts.upsert", sessionId, { contacts: processedContacts });
 		} catch (error) {
-			logger.error("An unexpected error occurred during contacts upsert", error);
+			captureException(error, {
+				tags: { scope: "store.contacts.upsert" },
+				extra: { sessionId },
+			});
+			logger.error(error, "An unexpected error occurred during contacts upsert");
 			emitEvent(
 				"contacts.upsert",
 				sessionId,
@@ -80,18 +84,20 @@ export default function contactHandler(sessionId: string, event: BaileysEventEmi
 		for (const update of updates) {
 			try {
 				const data = transformPrisma(update);
-				await model.update({
+				await model.upsert({
 					select: { pkId: true },
-					data,
+					create: { ...data, id: update.id!, sessionId },
+					update: data,
 					where: {
 						sessionId_id: { id: update.id!, sessionId },
 					},
 				});
 				emitEvent("contacts.update", sessionId, { contacts: data });
 			} catch (e) {
-				if (e instanceof PrismaClientKnownRequestError && e.code === "P2025") {
-					return logger.info({ update }, "Got update for non existent contact");
-				}
+				captureException(e, {
+					tags: { scope: "store.contacts.update" },
+					extra: { sessionId, contactId: update.id },
+				});
 				logger.error(e, "An error occured during contact update");
 				emitEvent(
 					"contacts.update",

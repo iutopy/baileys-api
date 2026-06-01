@@ -1,5 +1,5 @@
 import type { RequestHandler } from "express";
-import { logger } from "@/utils";
+import { captureException, logger } from "@/utils";
 import { makePhotoURLHandler } from "./misc.js";
 import { prisma } from "@/config/database";
 import WhatsappService from "@/whatsapp/service";
@@ -49,6 +49,7 @@ export const list: RequestHandler = async (req, res) => {
 		});
 	} catch (e) {
 		const message = "An error occurred during contact list";
+		captureException(e, { tags: { scope: "contact.list" } });
 		logger.error(e, message);
 		res.status(500).json({ error: message });
 	}
@@ -61,6 +62,7 @@ export const listBlocked: RequestHandler = async (req, res) => {
 		res.status(200).json(data);
 	} catch (e) {
 		const message = "An error occured during blocklist fetch";
+		captureException(e, { tags: { scope: "contact.blocklist" } });
 		logger.error(e, message);
 		res.status(500).json({ error: message });
 	}
@@ -78,6 +80,7 @@ export const updateBlock: RequestHandler = async (req, res) => {
 		res.status(200).json({ message: `Contact ${action}ed` });
 	} catch (e) {
 		const message = "An error occured during blocklist update";
+		captureException(e, { tags: { scope: "contact.updateBlock" } });
 		logger.error(e, message);
 		res.status(500).json({ error: message });
 	}
@@ -92,6 +95,7 @@ export const check: RequestHandler = async (req, res) => {
 		res.status(200).json({ exists });
 	} catch (e) {
 		const message = "An error occured during jid check";
+		captureException(e, { tags: { scope: "contact.check" } });
 		logger.error(e, message);
 		res.status(500).json({ error: message });
 	}

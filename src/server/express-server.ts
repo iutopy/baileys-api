@@ -1,6 +1,7 @@
 import express from "express";
 import type { Application, Request, Response } from "express";
 import cors from "cors";
+import * as Sentry from "@sentry/node";
 import routes from "@/routes";
 
 export class ExpressServer {
@@ -23,6 +24,8 @@ export class ExpressServer {
 		this.app.all("*", (_: Request, res: Response) =>
 			res.status(404).json({ error: "URL not found" }),
 		);
+
+		Sentry.setupExpressErrorHandler(this.app);
 	}
 
 	public getApp(): Application {

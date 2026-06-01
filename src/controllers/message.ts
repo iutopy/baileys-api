@@ -1,6 +1,12 @@
 import type { proto, WAGenericMediaMessage, WAMessage } from "baileys";
 import { downloadMediaMessage } from "baileys";
-import { serializePrisma, delay as delayMs, logger, emitEvent } from "@/utils";
+import {
+	captureException,
+	serializePrisma,
+	delay as delayMs,
+	logger,
+	emitEvent,
+} from "@/utils";
 import type { RequestHandler } from "express";
 import type { Message } from "@prisma/client";
 import { prisma } from "@/config/database";
@@ -30,6 +36,7 @@ export const list: RequestHandler = async (req, res) => {
 		});
 	} catch (e) {
 		const message = "An error occured during message list";
+		captureException(e, { tags: { scope: "message.list" } });
 		logger.error(e, message);
 		res.status(500).json({ error: message });
 	}
@@ -50,6 +57,7 @@ export const send: RequestHandler = async (req, res) => {
 		res.status(200).json(result);
 	} catch (e) {
 		const message = "An error occured during message send";
+		captureException(e, { tags: { scope: "message.send" } });
 		logger.error(e, message);
 		emitEvent(
 			"send.message",
@@ -87,6 +95,10 @@ export const sendBulk: RequestHandler = async (req, res) => {
 			emitEvent("send.message", sessionId, { jid, result });
 		} catch (e) {
 			const message = "An error occured during message send";
+			captureException(e, {
+				tags: { scope: "message.sendBulk" },
+				extra: { index, sessionId },
+			});
 			logger.error(e, message);
 			errors.push({ index, error: message });
 			emitEvent(
@@ -123,6 +135,7 @@ export const download: RequestHandler = async (req, res) => {
 		res.end();
 	} catch (e) {
 		const message = "An error occured during message media download";
+		captureException(e, { tags: { scope: "message.download" } });
 		logger.error(e, message);
 		res.status(500).json({ error: message });
 	}
@@ -159,6 +172,7 @@ export const deleteMessage: RequestHandler = async (req, res) => {
 		res.status(200).json(result);
 	} catch (e) {
 		const message = "An error occured during message delete";
+		captureException(e, { tags: { scope: "message.delete" } });
 		logger.error(e, message);
 		res.status(500).json({ error: message });
 	}
@@ -201,6 +215,7 @@ export const deleteMessageForMe: RequestHandler = async (req, res) => {
 		res.status(200).json(result);
 	} catch (e) {
 		const message = "An error occured during message delete";
+		captureException(e, { tags: { scope: "message.deleteForMe" } });
 		logger.error(e, message);
 		res.status(500).json({ error: message });
 	}

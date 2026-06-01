@@ -1,7 +1,9 @@
-import type { EventsType } from "@/types/websocket";
-import type { SocketServer } from "../server/websocket-server.js";
 import env from "@/config/env";
+import { captureException } from "@/utils/sentry";
+import { logger } from "@/utils/logger";
+import type { EventsType } from "@/types/websocket";
 import axios from "axios";
+import type { SocketServer } from "../server/websocket-server.js";
 
 let socketServer: SocketServer | null = null;
 export function initializeSocketEmitter(server: SocketServer) {
@@ -24,7 +26,7 @@ export function emitEvent(
 	if (socketServer) {
 		socketServer.emitEvent(event, sessionId, { status, message, data });
 	} else if (env.ENABLE_WEBSOCKET) {
-		console.error("Socket server not initialized. Call initializeSocketEmitter first.");
+		logger.error("Socket server not initialized. Call initializeSocketEmitter first.");
 	}
 }
 
@@ -54,6 +56,10 @@ export async function sendWebhook(
 			{ headers },
 		);
 	} catch (e) {
-		console.error("Error sending webhook", e);
+		captureException(e, {
+			tags: { scope: "webhook" },
+			extra: { event, sessionId, status },
+		});
+		logger.error(e, "Error sending webhook");
 	}
 }
